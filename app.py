@@ -102,7 +102,16 @@ def health_check():
 
 @app.route('/', methods=['GET'])
 def index():
-    return send_file('index.html')
+    return jsonify({
+        'message': 'YouTube Downloader API',
+        'version': '1.0.0',
+        'endpoints': {
+            'health': '/health',
+            'video_info': '/api/video-info',
+            'download': '/api/download',
+            'downloads': '/api/downloads'
+        }
+    })
 
 @app.route('/api/video-info', methods=['POST', 'OPTIONS'])
 @rate_limit(5)  # 5 requests per minute for video info

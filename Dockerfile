@@ -34,7 +34,6 @@ WORKDIR /app
 
 # Copy application files
 COPY app.py config.py gunicorn.conf.py ./
-COPY index.html .
 
 # Create necessary directories
 RUN mkdir -p downloads tmp && \
