@@ -33,7 +33,7 @@ COPY --from=builder /root/.local /home/appuser/.local
 WORKDIR /app
 
 # Copy application files
-COPY app.py config.py gunicorn.conf.py ./
+COPY app.py config.py gunicorn.conf.py utils.py ./
 
 # Create necessary directories
 RUN mkdir -p downloads tmp && \
