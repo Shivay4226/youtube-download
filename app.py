@@ -11,7 +11,7 @@ import urllib.parse
 from config import config
 from functools import wraps
 from collections import defaultdict, deque
-from utils import get_ydl_options, get_alternative_ydl_options, retry_with_backoff
+from utils import get_ydl_options, get_alternative_ydl_options, get_fallback_ydl_options, retry_with_backoff
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -134,23 +134,30 @@ def get_video_info():
         # Get anti-bot yt-dlp options
         ydl_opts = get_ydl_options()
         
-        @retry_with_backoff(max_retries=2, base_delay=1)
-        def extract_info_with_retry():
-            # Try primary method first
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=False)
-            except Exception as e:
-                if "Sign in to confirm" in str(e):
-                    # Try alternative Android client method
-                    logger.info("Primary method failed, trying Android client...")
-                    alt_opts = get_alternative_ydl_options()
-                    with yt_dlp.YoutubeDL(alt_opts) as ydl:
+        def extract_info_with_multiple_fallbacks():
+            methods = [
+                ("iOS client", get_ydl_options()),
+                ("Web client", get_alternative_ydl_options()),
+                ("Minimal fallback", get_fallback_ydl_options())
+            ]
+            
+            last_error = None
+            for method_name, opts in methods:
+                try:
+                    logger.info(f"Trying {method_name}...")
+                    with yt_dlp.YoutubeDL(opts) as ydl:
                         return ydl.extract_info(url, download=False)
-                raise e
+                except Exception as e:
+                    logger.warning(f"{method_name} failed: {str(e)[:100]}...")
+                    last_error = e
+                    time.sleep(1)  # Brief delay between attempts
+                    continue
+            
+            # If all methods fail, raise the last error
+            raise last_error
         
-        # Extract video info with fallback mechanism
-        info = extract_info_with_retry()
+        # Extract video info with multiple fallback methods
+        info = extract_info_with_multiple_fallbacks()
         
         # Get available video formats
         video_streams = []

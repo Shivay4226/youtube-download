@@ -22,34 +22,29 @@ def get_ydl_options(output_path=None):
     options = {
         'quiet': True,
         'no_warnings': True,
+        'no_check_certificate': True,
         'extractor_args': {
             'youtube': {
-                'skip': ['dash', 'hls'],
-                'player_skip': ['configs', 'webpage'],
-                'player_client': ['android', 'web', 'tv_embedded'],
-                'skip_manifests': True
+                'player_client': ['ios', 'android'],
+                'skip': ['hls', 'dash'],
+                'innertube_host': 'youtubei.googleapis.com',
+                'innertube_key': None,
+                'check_formats': None
             }
         },
         'http_headers': {
-            'User-Agent': get_random_user_agent(),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'User-Agent': 'com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)',
+            'Accept': '*/*',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0',
-            'Pragma': 'no-cache'
+            'Accept-Encoding': 'gzip, deflate',
+            'Origin': 'https://www.youtube.com',
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '19.09.3'
         },
-        # Use mobile client to avoid bot detection
-        'format_selector': None,
-        'age_limit': None,
-        'geo_bypass': True,
-        'geo_bypass_country': 'US'
+        'cookiefile': None,
+        'extract_flat': False,
+        'writethumbnail': False,
+        'writeinfojson': False
     }
     
     if output_path:
@@ -58,24 +53,48 @@ def get_ydl_options(output_path=None):
     return options
 
 def get_alternative_ydl_options(output_path=None):
-    """Alternative yt-dlp options using different extraction method"""
+    """Alternative yt-dlp options using web client with minimal requests"""
     options = {
         'quiet': True,
         'no_warnings': True,
+        'no_check_certificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios'],
-                'skip': ['dash', 'hls', 'webpage'],
-                'player_skip': ['configs', 'webpage', 'js']
+                'player_client': ['web'],
+                'skip': ['hls', 'dash', 'live_chat'],
+                'innertube_host': 'www.youtube.com',
+                'innertube_key': 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
             }
         },
         'http_headers': {
-            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
-            'X-YouTube-Client-Name': '3',
-            'X-YouTube-Client-Version': '17.36.4'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com'
         },
-        'format_selector': None,
-        'age_limit': None
+        'format': 'best[height<=720]/best',
+        'extract_flat': False
+    }
+    
+    if output_path:
+        options['outtmpl'] = output_path
+    
+    return options
+
+def get_fallback_ydl_options(output_path=None):
+    """Fallback options with minimal configuration"""
+    options = {
+        'quiet': True,
+        'no_warnings': True,
+        'format': 'worst/best',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web'],
+                'skip': ['hls', 'dash']
+            }
+        }
     }
     
     if output_path:
