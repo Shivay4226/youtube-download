@@ -11,7 +11,7 @@ import urllib.parse
 from config import config
 from functools import wraps
 from collections import defaultdict, deque
-from utils import get_ydl_options, retry_with_backoff
+from utils import get_ydl_options, get_alternative_ydl_options, retry_with_backoff
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -134,12 +134,22 @@ def get_video_info():
         # Get anti-bot yt-dlp options
         ydl_opts = get_ydl_options()
         
-        @retry_with_backoff(max_retries=3, base_delay=2)
+        @retry_with_backoff(max_retries=2, base_delay=1)
         def extract_info_with_retry():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(url, download=False)
+            # Try primary method first
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+            except Exception as e:
+                if "Sign in to confirm" in str(e):
+                    # Try alternative Android client method
+                    logger.info("Primary method failed, trying Android client...")
+                    alt_opts = get_alternative_ydl_options()
+                    with yt_dlp.YoutubeDL(alt_opts) as ydl:
+                        return ydl.extract_info(url, download=False)
+                raise e
         
-        # Extract video info with retry mechanism
+        # Extract video info with fallback mechanism
         info = extract_info_with_retry()
         
         # Get available video formats

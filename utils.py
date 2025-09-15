@@ -18,7 +18,7 @@ def get_random_user_agent():
     return random.choice(USER_AGENTS)
 
 def get_ydl_options(output_path=None):
-    """Get yt-dlp options with anti-bot measures"""
+    """Get yt-dlp options with aggressive anti-bot measures"""
     options = {
         'quiet': True,
         'no_warnings': True,
@@ -26,13 +26,14 @@ def get_ydl_options(output_path=None):
             'youtube': {
                 'skip': ['dash', 'hls'],
                 'player_skip': ['configs', 'webpage'],
-                'player_client': ['android', 'web']
+                'player_client': ['android', 'web', 'tv_embedded'],
+                'skip_manifests': True
             }
         },
         'http_headers': {
             'User-Agent': get_random_user_agent(),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
             'Connection': 'keep-alive',
@@ -40,8 +41,41 @@ def get_ydl_options(output_path=None):
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
-            'Cache-Control': 'max-age=0'
-        }
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'Pragma': 'no-cache'
+        },
+        # Use mobile client to avoid bot detection
+        'format_selector': None,
+        'age_limit': None,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US'
+    }
+    
+    if output_path:
+        options['outtmpl'] = output_path
+    
+    return options
+
+def get_alternative_ydl_options(output_path=None):
+    """Alternative yt-dlp options using different extraction method"""
+    options = {
+        'quiet': True,
+        'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios'],
+                'skip': ['dash', 'hls', 'webpage'],
+                'player_skip': ['configs', 'webpage', 'js']
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
+            'X-YouTube-Client-Name': '3',
+            'X-YouTube-Client-Version': '17.36.4'
+        },
+        'format_selector': None,
+        'age_limit': None
     }
     
     if output_path:
