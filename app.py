@@ -11,6 +11,7 @@ import urllib.parse
 from config import config
 from functools import wraps
 from collections import defaultdict, deque
+from utils import get_ydl_options, retry_with_backoff
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -130,87 +131,71 @@ def get_video_info():
         
         logger.info(f"Video info request for URL: {url[:50]}...")  # Log first 50 chars
         
-        # Configure yt-dlp options
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-        }
+        # Get anti-bot yt-dlp options
+        ydl_opts = get_ydl_options()
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract video info
-            info = ydl.extract_info(url, download=False)
+        @retry_with_backoff(max_retries=3, base_delay=2)
+        def extract_info_with_retry():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        
+        # Extract video info with retry mechanism
+        info = extract_info_with_retry()
+        
+        # Get available video formats
+        video_streams = []
+        audio_streams = []
+        
+        for fmt in info.get('formats', []):
+            # Video formats (including adaptive streams)
+            if fmt.get('vcodec') != 'none' and fmt.get('height'):
+                video_streams.append({
+                    'format_id': fmt.get('format_id'),
+                    'resolution': f"{fmt.get('height')}p" if fmt.get('height') else 'N/A',
+                    'fps': fmt.get('fps'),
+                    'file_size': fmt.get('filesize') or fmt.get('filesize_approx', 0),
+                    'ext': fmt.get('ext'),
+                    'quality': fmt.get('format_note', ''),
+                    'vcodec': fmt.get('vcodec', ''),
+                    'acodec': fmt.get('acodec', ''),
+                    'tbr': fmt.get('tbr')
+                })
             
-            # Get available video formats
-            video_streams = []
-            audio_streams = []
-            
-            for fmt in info.get('formats', []):
-                # Video formats (including adaptive streams)
-                if fmt.get('vcodec') != 'none' and fmt.get('height'):
-                    video_streams.append({
-                        'format_id': fmt.get('format_id'),
-                        'resolution': f"{fmt.get('height')}p" if fmt.get('height') else 'N/A',
-                        'fps': fmt.get('fps'),
-                        'file_size': fmt.get('filesize') or fmt.get('filesize_approx', 0),
-                        'ext': fmt.get('ext'),
-                        'quality': fmt.get('format_note', ''),
-                        'vcodec': fmt.get('vcodec', ''),
-                        'acodec': fmt.get('acodec', 'none')
-                    })
-                # Audio only formats
-                elif fmt.get('vcodec') == 'none' and fmt.get('acodec') != 'none':
-                    audio_streams.append({
-                        'format_id': fmt.get('format_id'),
-                        'abr': fmt.get('abr'),
-                        'file_size': fmt.get('filesize') or fmt.get('filesize_approx', 0),
-                        'ext': fmt.get('ext'),
-                        'quality': fmt.get('format_note', '')
-                    })
-            
-            # Remove duplicates and sort by resolution (highest first)
-            unique_video_streams = {}
-            for stream in video_streams:
-                height = int(stream['resolution'].replace('p', '')) if stream['resolution'] != 'N/A' else 0
-                key = f"{height}_{stream['ext']}"
-                if key not in unique_video_streams or height > int(unique_video_streams[key]['resolution'].replace('p', '')):
-                    unique_video_streams[key] = stream
-            
-            video_streams = sorted(unique_video_streams.values(), 
-                                 key=lambda x: int(x['resolution'].replace('p', '')) if x['resolution'] != 'N/A' else 0, reverse=True)
-            
-            # Remove duplicate audio streams and sort by bitrate
-            unique_audio_streams = {}
-            for stream in audio_streams:
-                key = f"{stream['abr']}_{stream['ext']}"
-                if key not in unique_audio_streams:
-                    unique_audio_streams[key] = stream
-            
-            audio_streams = sorted(unique_audio_streams.values(), 
-                                 key=lambda x: x['abr'] or 0, reverse=True)
-            
-            # Get available subtitles
-            captions = []
-            subtitles = info.get('subtitles', {})
-            for lang_code, subs in subtitles.items():
+            # Audio formats
+            if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
+                audio_streams.append({
+                    'format_id': fmt.get('format_id'),
+                    'quality': fmt.get('format_note', ''),
+                    'file_size': fmt.get('filesize') or fmt.get('filesize_approx', 0),
+                    'ext': fmt.get('ext'),
+                    'acodec': fmt.get('acodec', ''),
+                    'abr': fmt.get('abr')
+                })
+        
+        # Get available captions
+        captions = []
+        if info.get('subtitles'):
+            for lang_code, subs in info.get('subtitles', {}).items():
                 captions.append({
                     'code': lang_code,
                     'name': lang_code.upper(),
                     'language': lang_code
                 })
-            
-            video_info = {
-                'title': info.get('title', 'Unknown'),
-                'author': info.get('uploader', 'Unknown'),
-                'length': info.get('duration', 0),
-                'views': info.get('view_count', 0),
-                'description': (info.get('description', '')[:500] + '...') if len(info.get('description', '')) > 500 else info.get('description', ''),
-                'thumbnail_url': info.get('thumbnail', ''),
-                'video_streams': video_streams[:15],  # Show more high-quality formats
-                'audio_streams': audio_streams[:8],   # Show more audio formats
-                'captions': captions
-            }
-            
-            return jsonify(video_info)
+        
+        video_info = {
+            'title': info.get('title', 'Unknown'),
+            'uploader': info.get('uploader', 'Unknown'),
+            'duration': info.get('duration', 0),
+            'view_count': info.get('view_count', 0),
+            'like_count': info.get('like_count', 0),
+            'description': (info.get('description', '')[:500] + '...') if len(info.get('description', '')) > 500 else info.get('description', ''),
+            'thumbnail_url': info.get('thumbnail', ''),
+            'video_streams': video_streams[:15],
+            'audio_streams': audio_streams[:8],
+            'captions': captions
+        }
+        
+        return jsonify(video_info)
     
     except Exception as e:
         logger.error(f"Error in get_video_info: {str(e)}")
@@ -237,12 +222,8 @@ def download_video():
         
         logger.info(f"Download request for URL: {url[:50]}...")  # Log first 50 chars
         
-        # Configure yt-dlp options
-        ydl_opts = {
-            'outtmpl': os.path.join(DOWNLOADS_DIR, '%(title)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-        }
+        # Get anti-bot yt-dlp options
+        ydl_opts = get_ydl_options(os.path.join(DOWNLOADS_DIR, '%(title)s.%(ext)s'))
         
         if download_type == 'audio':
             # Audio download options
